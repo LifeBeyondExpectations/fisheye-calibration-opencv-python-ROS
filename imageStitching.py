@@ -68,12 +68,15 @@ class matchers:
         kp, des = self.surf.detectAndCompute(gray, None)
         return {'kp':kp, 'des':des}
 
-
+# https://github.com/kushalvyas/Python-Multiple-Image-Stitching/blob/master/code/pano.py
 class Stitch:
-    def __init__(self, args):
-        self.images = [cv2.resize(cv2.imread(each), (480, 320)) for each in args]
-        self.count = len(self.images)
-        print('what is self.count ', self.count)
+    images = [[],[]]
+    def __init__(self, leftImage, rightImage):
+        self.images[0] = cv2.resize(leftImage, (480, 320), cv2.INTER_LINEAR)
+        self.images[1] = cv2.resize(rightImage, (480, 320), cv2.INTER_LINEAR)
+        #  = [cv2.resize(cv2.imread(each), (480, 320))b for each in (leftImage, rightImage)]
+        self.count = 2#len(self.images)
+        #print('what is self.count ', self.count)
         self.left_list, self.right_list, self.center_im = [], [], None
         self.matcher_obj = matchers()
         self.prepare_lists()
@@ -269,10 +272,14 @@ class dataLoadType:
             count = count + 1
 
             # if you want to work asynchronously, edit the lines below
-            #self.wrapper()
-            cv2.imshow('multi image display', np.concatenate((cv2.resize(self.singleImage_JS.imgData, (300,300), cv2.INTER_LINEAR),
-                                                                cv2.resize(self.singleImage_Francois.imgData, (300, 300), cv2.INTER_LINEAR))
-                                                                , axis=1))
+            # self.wrapper()
+
+            # cv2.imshow('multi image display', np.concatenate((cv2.resize(self.singleImage_JS.imgData, (480,320), cv2.INTER_LINEAR)[140:],
+            #                                                   cv2.resize(self.singleImage_Francois.imgData, (480,320), cv2.INTER_LINEAR))
+            #                                                  ,axis=1))
+
+            # cv2.imshow('fuck', self.singleImage_JS.imgData[:303])
+            cv2.imshow('stitched image', np.concatenate((self.singleImage_JS.imgData[:398], self.singleImage_Francois.imgData[274:]), axis=0))
             cv2.waitKey(1)
 
         except CvBridgeError as e:
@@ -294,52 +301,22 @@ class dataLoadType:
     #         print(e)
 
     def wrapper(self):
-        global count, num_of_image_in_database
-        global flag_subscribe_new_image_not_load_old_image, flag_load_calibrated_result
+        global count
 
-        # fucking code
-        self.calibrate_inst.height = self.singleImage_inst.height
-        self.calibrate_inst.width = self.singleImage_inst.width
+        s = Stitch(self.singleImage_JS.imgData, self.singleImage_Francois.imgData)
+        s.leftshift()
+        # s.showImage('left')
 
-        if flag_load_detected_result == 0 and flag_load_calibrated_result == 0:
-            if count < num_of_image_in_database:
-                self.calibrate_inst.detectCheckerBoard(self.singleImage_inst.imgData)
-            elif count == num_of_image_in_database:
-                self.calibrate_inst.detectCheckerBoard(self.singleImage_inst.imgData)
-                self.calibrate_inst.saveVarInDetection()
-                self.calibrate_inst.startCalibration()
-                self.calibrate_inst.saveVarAfterCalibration()
-            else:
-                self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
+        s.rightshift()
+        print('done')
 
-        elif flag_load_detected_result == 1 and flag_load_calibrated_result == 0:
-            # load Detection results, start calibratin and show undistorted image
-            if self.flag_fisrt_didLoadVarDetection == 1:
-                self.calibrate_inst.loadVarInDetection()
-                self.calibrate_inst.startCalibration()
-                self.calibrate_inst.saveVarAfterCalibration()
-                # do not come here again
-                self.flag_fisrt_didLoadVarDetection = 0
+        cv2.imshow('stitch result', s.leftImage)
+        cv2.waitKey(1)
 
-            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
+        #cv2.imwrite("test12.jpg", s.leftImage)
+        #print('image written')
 
-        elif flag_load_calibrated_result == 1:
-            # load Calibration results and show undistorted image
-            if self.flag_first_didLoadVarCalibration == 1:
-                self.calibrate_inst.loadVarAfterCalibration()
-                # do not come here again
-                self.flag_first_didLoadVarCalibration = 0
 
-            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
-
-        else:
-            print("fucking error for count = ", count)
-
-        if flag_publish_calibrated_image == 1:
-            try:
-                self.rospyPubImg.publish(self.bridge.cv2_to_imgmsg(self.singleImage_inst.imgCalibrated, "bgr8"))
-            except CvBridgeError as e:
-                print(e)
 
 class singleImageData:
     height = 0
@@ -372,20 +349,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print('end')
 
-
-    # fileList = glob.glob('stitchTest/*.png')
-    # print('fileList is ', fileList)
-    #
-    # s = Stitch(fileList)
-    # s.leftshift()
-    # # s.showImage('left')
-    #
-    # s.rightshift()
-    # print('done')
-    #
-    # cv2.imshow('stitch result', s.leftImage)
-    # cv2.waitKey(1)
-
-    #cv2.imwrite("test12.jpg", s.leftImage)
-    #print('image written')
 

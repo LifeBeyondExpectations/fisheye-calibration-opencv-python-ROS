@@ -21,11 +21,13 @@ import os
 #flag
 flag_subscribe_new_image_not_load_old_image = 1
 flag_publish_calibrated_image = 1
+
+
 flag_load_calibrated_result = 1
 flag_load_detected_result = 0
 flag_fisheye_calibrate = 1
 flag_save_image_onlyWhichDetectCheckeboard = 1
-flag_show_image = 0
+flag_show_image = 1
 
 
 #parameter
@@ -297,7 +299,7 @@ class calibration:
         dim1 = dim0
         dim2 = dim1
         dim3 = tuple((np.array(dim1)*1).astype(int))
-        displayDim = tuple((np.array(frame.shape[:2][::-1]) / 2.5).astype(int))
+        displayDim = (640, 480) #tuple((np.array(frame.shape[:2][::-1]) / 2.5).astype(int))
         #print('dim3 is ', dim3, 'dim2 is ', dim2, 'dim1 is ', dim1)
         #print('shape of the tained images are ', (self.width, self.height))
 
@@ -335,49 +337,48 @@ class calibration:
 
             if self.flag_get_undistort_param == 1:
 
-                self.new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(K=self.camera_matrix,
-                                                                                                D=self.distCoeffs,
-                                                                                                image_size=(self.width, self.height),
-                                                                                                R=np.eye(3),
-                                                                                                P=None,
-                                                                                                balance=mybalance,
-                                                                                                new_size=dim3#,fov_scale=1.0
-                                                                                                )
-
-                # https://medium.com/@kennethjiang/calibrate-fisheye-lens-using-opencv-part-2-13990f1b157f
-                self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(K=self.camera_matrix,
-                                                                             D=self.distCoeffs,
-                                                                             R=np.eye(3),
-                                                                             P=self.camera_matrix,
-                                                                             size=dim3,
-                                                                             m1type=cv2.CV_32FC1)
-
-
-                # check the result of calibration
-                print('camera matrix is ')
-                print(self.camera_matrix)
-                print('new camera Matrix is ')
-                print(self.new_camera_matrix)
-                print('distort Coeffs is ')
-                print(self.distCoeffs)
-
+                # self.new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(K=self.camera_matrix,
+                #                                                                                 D=self.distCoeffs,
+                #                                                                                 image_size=(self.width, self.height),
+                #                                                                                 R=np.eye(3),
+                #                                                                                 P=None,
+                #                                                                                 balance=mybalance,
+                #                                                                                 new_size=dim3#,fov_scale=1.0
+                #                                                                                 )
+                #
+                # # https://medium.com/@kennethjiang/calibrate-fisheye-lens-using-opencv-part-2-13990f1b157f
+                # self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(K=self.camera_matrix,
+                #                                                              D=self.distCoeffs,
+                #                                                              R=np.eye(3),
+                #                                                              P=self.camera_matrix,
+                #                                                              size=dim3,
+                #                                                              m1type=cv2.CV_32FC1)
+                #
+                #
+                # # check the result of calibration
+                # print('camera matrix is ')
+                # print(self.camera_matrix)
+                # print('new camera Matrix is ')
+                # print(self.new_camera_matrix)
+                # print('distort Coeffs is ')
+                # print(self.distCoeffs)
+                #
                 self.flag_get_undistort_param = 0
 
 
-            frame_undistorted_fisheye_camera_matrix = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=(self.width, self.height))
-            #frame_undistorted_fisheye_manual = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=dim3)
-            frame_undistorted_fisheye_remap_with_origin_camera_matrix = cv2.remap(src=frame,map1=self.map1,map2=self.map2,interpolation=cv2.INTER_LINEAR,borderMode=cv2.BORDER_DEFAULT)
+            frame_undistorted_fisheye_camera_matrix = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=dim0)#(self.width, self.height))
+            # frame_undistorted_fisheye_remap_with_origin_camera_matrix = cv2.remap(src=frame,map1=self.map1,map2=self.map2,interpolation=cv2.INTER_LINEAR,borderMode=cv2.BORDER_DEFAULT)
 
             if flag_show_image == 1:
-                cv2.imshow('jaesungLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
-                                                         cv2.resize(frame_undistorted_fisheye_remap_with_origin_camera_matrix, displayDim, cv2.INTER_LINEAR),
-                                                         cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),axis=1))
+                # cv2.imshow('jaesungLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
+                #                                          cv2.resize(frame_undistorted_fisheye_remap_with_origin_camera_matrix, displayDim, cv2.INTER_LINEAR),
+                #                                          cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),axis=1))
 
-            #cv2.imwrite('JSResultImage.png', cv2.resize(frame_undistorted_fisheye_camera_matrix, dim0, cv2.INTER_LINEAR))
+                tmp = cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR)
+                cv2.imshow('JS calibrated resuls', tmp)
 
             cv2.waitKey(1)
-            return frame_undistorted_fisheye_camera_matrix
-            #return cv2.resize(frame_undistorted_fisheye_camera_matrix, (10,10), cv2.INTER_LINEAR)
+            return tmp
         else:
             print('error for <flag_fisheye_calibrate>')
             return None
