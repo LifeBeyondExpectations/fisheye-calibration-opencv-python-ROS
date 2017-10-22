@@ -17,31 +17,29 @@ from tempfile import TemporaryFile
 import glob
 import os
 
+#flag
+flag_subscribe_new_image_not_load_old_image = 1
+flag_publish_calibrated_image = 1
+flag_load_calibrated_result = 1
+flag_load_detected_result = 0
+flag_fisheye_calibrate = 1
+flag_save_image_onlyWhichDetectCheckeboard = 1
+flag_show_image = 0
+
+
 #parameter
 ROS_TOPIC = 'francois_lens_camera/image_color'
 path_image_database = "video_francois_lens/*.png"
 save_video_to_the_path = "video_francois_lens/"
 nameOf_pickle_Checkerboard_Detection = "result/detect_result_jaesung_171021_1600_delete_files.pickle"
+
 nameof_pickel_calibrated_result = "calib_result_Francois_fisheye.pickle"
 #"result/calibrated_results_jaesung_lens_fisheye_module.pickle"
-#
-
-#nameof_pickle_map_undistort = "result/map1_map2_not_fisheye_mode.pickle"
-#"result/map1_map2_jaesung_lens_fisheye_module.pickle"
 
 fileList = []
 num_of_image_in_database = 3000
 count = 0
 mybalance = 0
-
-#flag
-flag_subscribe_new_image_not_load_old_image = 1
-flag_load_calibrated_result = 1
-flag_load_detected_result = 0
-
-flag_fisheye_calibrate = 1
-
-flag_save_image_onlyWhichDetectCheckeboard = 0
 
 class calibration:
     # you must check the checkboard which you would like to use for the calibration
@@ -262,7 +260,7 @@ class calibration:
         currentFrameShape = frame.shape[:2][::-1]
         dim3 = tuple((np.array(currentFrameShape) / 1).astype(int))
         displayDim = tuple((np.array(currentFrameShape) / 1.3).astype(int))
-        print('trainImageShapeis ', trainImageShape, 'currentFrameShape is ', currentFrameShape, 'displayDim is ', displayDim)
+        # print('trainImageShapeis ', trainImageShape, 'currentFrameShape is ', currentFrameShape, 'displayDim is ', displayDim)
 
         if flag_fisheye_calibrate == 0:
 
@@ -336,24 +334,20 @@ class calibration:
             frame_undistorted_fisheye_camera_matrix = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=currentFrameShape)
             frame_undistorted_fisheye_remap_= cv2.remap(src=frame,map1=self.map1,map2=self.map2,interpolation=cv2.INTER_LINEAR,borderMode=cv2.BORDER_DEFAULT)
 
-            cv2.imshow('francoisLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
-                                                     cv2.resize(frame_undistorted_fisheye_remap_, displayDim, cv2.INTER_LINEAR),
-                                                     cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),
-                                                    axis=1
-                                                    )
-                       )
+            if flag_show_image == 1:
+                cv2.imshow('francoisLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
+                                                         cv2.resize(frame_undistorted_fisheye_remap_, displayDim, cv2.INTER_LINEAR),
+                                                         cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),axis=1))
 
-            # Below are same
-            # frame_undistorted_fisheye_camera_matrix = cv2.fisheye.undistortImage(frame, self.camera_matrix,
-            #                                                                      self.distCoeffs,
-            #                                                                      Knew=self.camera_matrix,
-            #                                                                      new_size=(self.width, self.height))
-            #
-            # frame_undistorted_fisheye_remap = cv2.remap(frame, self.map1, self.map2, interpolation=cv2.INTER_LINEAR,
-            #                                             borderMode=cv2.BORDER_CONSTANT)
+            #cv2.imwrite('FrancoisResultImage.png', cv2.resize(frame_undistorted_fisheye_camera_matrix, currentFrameShape, cv2.INTER_LINEAR))
+
 
             cv2.waitKey(1)
-
+            return frame_undistorted_fisheye_camera_matrix
+            # return cv2.resize(frame_undistorted_fisheye_camera_matrix, (10,10), cv2.INTER_LINEAR)
+        else:
+            print('error for <flag_fisheye_calibrate>')
+            return None
 
 class dataLoadType:
 
@@ -369,7 +363,7 @@ class dataLoadType:
 
     def subscribeImage(self):
         print('start to subscribe image')
-        rospy.init_node('dataLoadType', anonymous=True)
+        #rospy.init_node('dataLoadType', anonymous=True)
         self.rospySubImg = rospy.Subscriber(ROS_TOPIC, Image, self.callback)
         #automatically go to the callback function : self.callback()
 
@@ -410,13 +404,20 @@ class dataLoadType:
         except CvBridgeError as e:
             print(e)
 
+    def publishImage(self):
+        # http://wiki.ros.org/ROS/Tutorials/WritingPublisherSubscriber%28python%29
+        print('start to publish JS image')
+        self.rospyPubImg = rospy.Publisher('calibration_Francois_fisheye/image_calibrated', Image, queue_size=10)
+        # rospy.init_node('calibrated_JS_lens_fisheye', anonymous=True)
+        rate = rospy.Rate(10)  # 10Hz
+
     def wrapper(self):
         global count, num_of_image_in_database
         global flag_subscribe_new_image_not_load_old_image, flag_load_calibrated_result
 
         # fucking code
-        self.calibrate_inst.height_train = self.singleImage_inst.height
-        self.calibrate_inst.width_train = self.singleImage_inst.width
+        self.calibrate_inst.height = self.singleImage_inst.height
+        self.calibrate_inst.width = self.singleImage_inst.width
 
         if flag_load_detected_result == 0 and flag_load_calibrated_result == 0:
             if count < num_of_image_in_database:
@@ -427,7 +428,7 @@ class dataLoadType:
                 self.calibrate_inst.startCalibration()
                 self.calibrate_inst.saveVarAfterCalibration()
             else:
-                undistort_imShow(self.singleImage_inst.imgData)
+                self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
 
         elif flag_load_detected_result == 1 and flag_load_calibrated_result == 0:
             # load Detection results, start calibratin and show undistorted image
@@ -438,7 +439,7 @@ class dataLoadType:
                 # do not come here again
                 self.flag_fisrt_didLoadVarDetection = 0
 
-            self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
+            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
 
         elif flag_load_calibrated_result == 1:
             # load Calibration results and show undistorted image
@@ -447,10 +448,18 @@ class dataLoadType:
                 # do not come here again
                 self.flag_first_didLoadVarCalibration = 0
 
-            self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
+            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
 
         else:
             print("fucking error for count = ", count)
+
+        if flag_publish_calibrated_image == 1:
+            try:
+                self.rospyPubImg.publish(self.bridge.cv2_to_imgmsg(self.singleImage_inst.imgCalibrated, "bgr8"))
+                cv2.waitKey(1)
+            except CvBridgeError as e:
+                print(e)
+                cv2.waitKey(1)
 
 
 class singleImageData:
@@ -481,13 +490,21 @@ if __name__ == "__main__":
 
     #global flag_subscribe_new_image_not_load_old_image
     try:
-       if flag_subscribe_new_image_not_load_old_image == 1:
-            rospy.init_node('dataLoadType', anonymous=True)
-
+        if flag_subscribe_new_image_not_load_old_image == 1:
+            rospy.init_node('calibration_Francois_fisheye', anonymous=True)
             dataLoadType_inst.subscribeImage()
+
+            if flag_publish_calibrated_image == 1:
+                dataLoadType_inst.publishImage()
+
             rospy.spin()
-       elif flag_subscribe_new_image_not_load_old_image == 0:
-           dataLoadType_inst.loadImageInFiles()
+
+
+        elif flag_subscribe_new_image_not_load_old_image == 0:
+            dataLoadType_inst.loadImageInFiles()
+
+            if flag_publish_calibrated_image == 1:
+                dataLoadType_inst.publishImage()
 
     except KeyboardInterrupt:
         print("Shutting down")

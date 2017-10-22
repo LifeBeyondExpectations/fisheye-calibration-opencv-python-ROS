@@ -17,6 +17,17 @@ from tempfile import TemporaryFile
 import glob
 import os
 
+
+#flag
+flag_subscribe_new_image_not_load_old_image = 1
+flag_publish_calibrated_image = 1
+flag_load_calibrated_result = 1
+flag_load_detected_result = 0
+flag_fisheye_calibrate = 1
+flag_save_image_onlyWhichDetectCheckeboard = 1
+flag_show_image = 0
+
+
 #parameter
 ROS_TOPIC = 'jaesung_lens_camera/image_color'
     #'jaesung_lens_camera/image_color'
@@ -26,26 +37,11 @@ nameOf_pickle_Checkerboard_Detection = 'result/detection_result_francois_171021_
 #"result/addedImages_kiback_advice_included.pickle"
 nameof_pickel_calibrated_result = "calib_result_JS_fisheye.pickle"
 #fisheye-calibration-opencv-python-ROS/staticEndVersion/
-#
-
-#nameof_pickle_map_undistort = "result/map1_map2_not_fisheye_mode.pickle"
-#"result/map1_map2_jaesung_lens_fisheye_module.pickle"
 
 fileList = []
 num_of_image_in_database = 1000
 count = 0
-
-
 mybalance = 0
-
-
-
-#flag
-flag_subscribe_new_image_not_load_old_image = 1
-flag_load_calibrated_result = 1
-flag_load_detected_result = 0
-flag_fisheye_calibrate = 1
-flag_save_image_onlyWhichDetectCheckeboard = 1
 
 class calibration:
     # you must check the checkboard which you would like to use for the calibration
@@ -295,15 +291,15 @@ class calibration:
         print('width, height is ', self.width, self.height)
 
     def undistort_imShow(self, frame):
-        print('shape of frames is ', frame.shape)
+        #print('shape of frames is ', frame.shape)
         #frame = cv2.resize(frame, (964, 1288), cv2.INTER_LINEAR)
         dim0 = frame.shape[:2][::-1]
         dim1 = dim0
         dim2 = dim1
         dim3 = tuple((np.array(dim1)*1).astype(int))
         displayDim = tuple((np.array(frame.shape[:2][::-1]) / 2.5).astype(int))
-        print('dim3 is ', dim3, 'dim2 is ', dim2, 'dim1 is ', dim1)
-        print('shape of the tained images are ', (self.width, self.height))
+        #print('dim3 is ', dim3, 'dim2 is ', dim2, 'dim1 is ', dim1)
+        #print('shape of the tained images are ', (self.width, self.height))
 
         if flag_fisheye_calibrate == 0:
 
@@ -372,24 +368,19 @@ class calibration:
             #frame_undistorted_fisheye_manual = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=dim3)
             frame_undistorted_fisheye_remap_with_origin_camera_matrix = cv2.remap(src=frame,map1=self.map1,map2=self.map2,interpolation=cv2.INTER_LINEAR,borderMode=cv2.BORDER_DEFAULT)
 
-            cv2.imshow('jaesungLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
-                                                     #cv2.resize(frame_undistorted_fisheye_manual, displayDim, cv2.INTER_LINEAR),
-                                                     cv2.resize(frame_undistorted_fisheye_remap_with_origin_camera_matrix, displayDim, cv2.INTER_LINEAR),
-                                                     cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),axis=1))
+            if flag_show_image == 1:
+                cv2.imshow('jaesungLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
+                                                         cv2.resize(frame_undistorted_fisheye_remap_with_origin_camera_matrix, displayDim, cv2.INTER_LINEAR),
+                                                         cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),axis=1))
 
-            # Below are same
-            # frame_undistorted_fisheye_camera_matrix = cv2.fisheye.undistortImage(frame, self.camera_matrix,
-            #                                                                      self.distCoeffs,
-            #                                                                      Knew=self.camera_matrix,
-            #                                                                      new_size=(self.width, self.height))
-            #
-            # frame_undistorted_fisheye_remap = cv2.remap(frame, self.map1, self.map2, interpolation=cv2.INTER_LINEAR,
-            #                                             borderMode=cv2.BORDER_CONSTANT)
+            #cv2.imwrite('JSResultImage.png', cv2.resize(frame_undistorted_fisheye_camera_matrix, dim0, cv2.INTER_LINEAR))
 
             cv2.waitKey(1)
-
+            return frame_undistorted_fisheye_camera_matrix
+            #return cv2.resize(frame_undistorted_fisheye_camera_matrix, (10,10), cv2.INTER_LINEAR)
         else:
             print('error for <flag_fisheye_calibrate>')
+            return None
 
 class dataLoadType:
 
@@ -405,7 +396,7 @@ class dataLoadType:
 
     def subscribeImage(self):
         print('start to subscribe image')
-        rospy.init_node('dataLoadType', anonymous=True)
+        #rospy.init_node('dataLoadType', anonymous=True)
         self.rospySubImg = rospy.Subscriber(ROS_TOPIC, Image, self.callback)
         #automatically go to the callback function : self.callback()
 
@@ -430,6 +421,14 @@ class dataLoadType:
             self.singleImage_inst.saveImage(cv2.imread(i))
 
             self.wrapper()
+
+    def publishImage(self):
+        # http://wiki.ros.org/ROS/Tutorials/WritingPublisherSubscriber%28python%29
+        print('start to publish JS image')
+        self.rospyPubImg = rospy.Publisher('calibration_JS_fisheye/image_calibrated', Image, queue_size=10)
+        #rospy.init_node('calibrated_JS_lens_fisheye', anonymous=True)
+        rate = rospy.Rate(10)  # 10Hz
+
 
     def callback(self, data):
         #print('come to callback function')
@@ -463,7 +462,7 @@ class dataLoadType:
                 self.calibrate_inst.startCalibration()
                 self.calibrate_inst.saveVarAfterCalibration()
             else:
-                undistort_imShow(self.singleImage_inst.imgData)
+                self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
 
         elif flag_load_detected_result == 1 and flag_load_calibrated_result == 0:
             # load Detection results, start calibratin and show undistorted image
@@ -474,7 +473,7 @@ class dataLoadType:
                 # do not come here again
                 self.flag_fisrt_didLoadVarDetection = 0
 
-            self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
+            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
 
         elif flag_load_calibrated_result == 1:
             # load Calibration results and show undistorted image
@@ -483,16 +482,22 @@ class dataLoadType:
                 # do not come here again
                 self.flag_first_didLoadVarCalibration = 0
 
-            self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
+            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
 
         else:
             print("fucking error for count = ", count)
 
+        if flag_publish_calibrated_image == 1:
+            try:
+                self.rospyPubImg.publish(self.bridge.cv2_to_imgmsg(self.singleImage_inst.imgCalibrated, "bgr8"))
+            except CvBridgeError as e:
+                print(e)
 
 class singleImageData:
     height = 0
     width = 0
     imgData = None
+    imgCalibrated = None
 
     def saveImage(self, img):
         self.imgData = img
@@ -514,16 +519,24 @@ if __name__ == "__main__":
     calibrate_inst = calibration()
     dataLoadType_inst = dataLoadType(singleImage_inst, calibrate_inst)
 
-
     #global flag_subscribe_new_image_not_load_old_image
     try:
        if flag_subscribe_new_image_not_load_old_image == 1:
-            rospy.init_node('dataLoadType', anonymous=True)
-
+            # One python file for one init_node
+            rospy.init_node('calibration_JS_fisheye', anonymous=True)
             dataLoadType_inst.subscribeImage()
+
+            if flag_publish_calibrated_image == 1:
+                dataLoadType_inst.publishImage()
+
             rospy.spin()
+
+
        elif flag_subscribe_new_image_not_load_old_image == 0:
            dataLoadType_inst.loadImageInFiles()
+
+           if flag_publish_calibrated_image == 1:
+                dataLoadType_inst.publishImage()
 
     except KeyboardInterrupt:
         print("Shutting down")
