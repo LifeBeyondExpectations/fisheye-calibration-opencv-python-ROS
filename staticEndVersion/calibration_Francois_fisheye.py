@@ -25,8 +25,8 @@ flag_publish_calibrated_image = 1
 flag_load_calibrated_result = 1
 flag_load_detected_result = 0
 flag_fisheye_calibrate = 1
-flag_save_image_onlyWhichDetectCheckeboard = 1
-flag_show_image = 1
+flag_save_image_onlyWhichDetectCheckeboard = 0
+flag_show_image_2_homography_3_distorted = 1
 
 
 #parameter
@@ -56,6 +56,7 @@ class calibration:
 
     flag_calibratedResult_save = 1
     flag_get_undistort_param = 1
+    flag_first_didHomography = 1
 
     height_train = 0
     width_train = 0
@@ -336,12 +337,23 @@ class calibration:
             frame_undistorted_fisheye_camera_matrix = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=currentFrameShape)
             # frame_undistorted_fisheye_remap_= cv2.remap(src=frame,map1=self.map1,map2=self.map2,interpolation=cv2.INTER_LINEAR,borderMode=cv2.BORDER_DEFAULT)
 
-            if flag_show_image == 1:
+            #tmp = cv2.resize(cv2.rotate(frame_undistorted_fisheye_camera_matrix, cv2.ROTATE_90_COUNTERCLOCKWISE), displayDim, cv2.INTER_LINEAR)
+            tmp = cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR)
+            global flag_show_image_2_homography_3_distorted
+            if flag_show_image_2_homography_3_distorted == 1:
                 # cv2.imshow('francoisLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
                 #                                          cv2.resize(frame_undistorted_fisheye_remap_, displayDim, cv2.INTER_LINEAR),
                 #                                          cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),axis=1))
-                tmp = cv2.resize(cv2.flip(frame_undistorted_fisheye_camera_matrix, flipCode=-1), displayDim, cv2.INTER_LINEAR)
-                cv2.imshow('fliped Francois frame', tmp)
+                #tmp = cv2.resize(cv2.flip(frame_undistorted_fisheye_camera_matrix, flipCode=-1), displayDim, cv2.INTER_LINEAR)
+
+                cv2.namedWindow('Francois calibrated frame')
+                cv2.imshow('Francois calibrated frame', tmp)
+            elif flag_show_image_2_homography_3_distorted == 2:
+                tmp = self.wrapper_homography(tmp)
+            elif flag_show_image_2_homography_3_distorted == 3:
+                #tmp = frame
+                cv2.namedWindow('Francois distorted frames')
+                cv2.imshow('Francois distorted frames', frame)
 
             cv2.waitKey(1)
             return tmp
@@ -349,6 +361,50 @@ class calibration:
         else:
             print('error for <flag_fisheye_calibrate>')
             return None
+
+    def wrapper_homography(self, frame_Francois=None):
+        if self.flag_first_didHomography == 1:
+            srcPoints_Francois = np.array([[78, 63], [213, 54], [370, 53],    [547, 45],
+                                                                              [546, 80],
+                                                                              [547, 112],
+                                           [64, 143], [199, 143], [356, 143], [536, 145],
+
+                                           [49, 225],
+
+                                           [35, 314], [166, 321], [331, 339], [518, 356],
+                                                                              [506, 394],
+                                                                              [508, 427],
+                                           [13, 401], [154, 417], [314, 438], [502, 465]])
+
+            dstPoints_Francois = np.array([[0, 0], [0, 50], [0, 100],         [0, 150],
+                                                                              [16, 150],
+                                                                              [34, 150],
+                                           [50, 0], [50, 50], [50, 100],      [50, 150],
+
+                                           [100, 0],
+
+                                           [150, 0], [150, 50], [150, 100],   [150, 150],
+                                                                              [166, 150],
+                                                                              [184, 150],
+                                           [200, 0], [200, 50], [200, 100],   [200, 150]])
+
+            srcPoints_Francois, dstPoints_Francois = np.array(srcPoints_Francois), np.array(dstPoints_Francois)
+            print('dstPoints_Francois is ', dstPoints_Francois.shape, srcPoints_Francois.shape)
+
+            self.homography_Francois, mask = cv2.findHomography(srcPoints=srcPoints_Francois, dstPoints=dstPoints_Francois, method=cv2.RANSAC)
+            print('homography_Francois is ', self.homography_Francois)
+            # self.homography_Francois = cv2.getPerspectiveTransform(srcPoints_Francois, dstPoints_Francois)
+
+            self.flag_first_didHomography = 0
+
+
+        frame_homography_Francois = cv2.warpPerspective(frame_Francois, self.homography_Francois, (250, 250))
+
+        cv2.namedWindow('frame_homography_Francois results')
+        cv2.imshow('frame_homography_Francois results', cv2.resize(frame_homography_Francois, (0,0), fx=2, fy=2)) #frame_Francois)#
+        cv2.waitKey(1)
+
+        return frame_homography_Francois
 
 class dataLoadType:
 
@@ -493,6 +549,7 @@ if __name__ == "__main__":
     try:
         if flag_subscribe_new_image_not_load_old_image == 1:
             rospy.init_node('calibration_Francois_fisheye', anonymous=True)
+
             dataLoadType_inst.subscribeImage()
 
             if flag_publish_calibrated_image == 1:

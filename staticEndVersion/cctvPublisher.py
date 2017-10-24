@@ -26,8 +26,8 @@ flag_publish_calibrated_image = 1
 flag_load_calibrated_result = 1
 flag_load_detected_result = 0
 flag_fisheye_calibrate = 1
-flag_save_image_onlyWhichDetectCheckeboard = 0
-flag_show_image_2_homography_3_distorted = 1
+flag_save_image_onlyWhichDetectCheckeboard = 1
+flag_show_image = 1
 
 
 #parameter
@@ -58,7 +58,6 @@ class calibration:
 
     flag_calibratedResult_save = 1
     flag_get_undistort_param = 1
-    flag_first_didHomography = 1
     height = 0
     width = 0
 
@@ -370,9 +369,9 @@ class calibration:
             frame_undistorted_fisheye_camera_matrix = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=dim0)#(self.width, self.height))
             # frame_undistorted_fisheye_remap_with_origin_camera_matrix = cv2.remap(src=frame,map1=self.map1,map2=self.map2,interpolation=cv2.INTER_LINEAR,borderMode=cv2.BORDER_DEFAULT)
 
+
             tmp = cv2.resize(cv2.rotate(frame_undistorted_fisheye_camera_matrix, cv2.ROTATE_90_CLOCKWISE), displayDim, cv2.INTER_LINEAR)
-            global flag_show_image_2_homography_3_distorted
-            if flag_show_image_2_homography_3_distorted == 1:
+            if flag_show_image == 1:
                 # cv2.imshow('jaesungLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
                 #                                          cv2.resize(frame_undistorted_fisheye_remap_with_origin_camera_matrix, displayDim, cv2.INTER_LINEAR),
                 #                                          cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),axis=1))
@@ -380,12 +379,6 @@ class calibration:
 
                 cv2.namedWindow('JS calibrated resuls')
                 cv2.imshow('JS calibrated resuls', tmp)
-            elif flag_show_image_2_homography_3_distorted == 2:
-                tmp = self.wrapper_homography(tmp)
-            elif flag_show_image_2_homography_3_distorted == 3:
-                tmp = cv2.flip(cv2.resize(frame, (0,0), fx=0.5, fy=0.5), flipCode=-1)
-                cv2.namedWindow('JS distorted frames')
-                cv2.imshow('JS distorted frames', cv2.flip(cv2.resize(frame, (0,0), fx=0.5, fy=0.5), flipCode=-1))
 
             cv2.waitKey(1)
             return tmp
@@ -393,61 +386,13 @@ class calibration:
             print('error for <flag_fisheye_calibrate>')
             return None
 
-    def wrapper_homography(self, frame_JS):
-
-        if self.flag_first_didHomography == 1:
-            # Jaesung
-            srcPoints_JS = np.array([[63, 133], [149, 122], [250, 113], [374, 105], [520, 98],
-                                                                        [372, 126],
-                                                                        [372, 153],
-                                                [133, 180], [239, 177], [371, 172], [527, 173],
-
-                                                #[125, 241], [239, 244], [367, 250], [531, 256],
-                                     [19, 313], [108, 319], [222, 331], [366, 343], [537, 352],
-                                                                        [365, 375],
-                                                                        [364, 405],
-                                     [9, 379], [101, 395], [218, 412], [362, 436], [537, 453],
-                                     [4, 445], [95, 467]])
-
-
-
-            dstPoints_JS = np.array([[0,0],    [0,  50],  [0,100],    [0, 150],    [0, 200],
-                                                                      [16, 150],
-                                                                      [34, 150],
-                                               [50, 50],  [50, 100],  [50, 150],  [50, 200],
-
-                                               #[100, 50], [100, 100], [100, 150], [100, 200],
-                                     [150, 0], [150, 50], [150, 100], [150, 150], [150, 200],
-                                                                      [166, 150],
-                                                                      [184, 150],
-                                     [200, 0], [200, 50], [200, 100], [200, 150], [200, 200],
-                                     [250, 0], [250, 50]])
-
-
-
-            srcPoints_JS, dstPoints_JS = np.array(srcPoints_JS), np.array(dstPoints_JS)
-            self.homography_JS, mask = cv2.findHomography(srcPoints=srcPoints_JS, dstPoints=dstPoints_JS, method=cv2.RANSAC)
-
-            self.flag_first_didHomography = 0
-
-        frame_homography_JS = cv2.warpPerspective(frame_JS, self.homography_JS, (250, 250))
-
-        # cv2.namedWindow('Undistorted frame of JS fisheye camera')
-        # cv2.imshow('Undistorted frame of JS fisheye camera', frame_JS)#cv2.resize(frame_JS, (0,0), fx=2, fy=2))
-
-        cv2.namedWindow('Transformation of undistorted frame of JS fisheye camera using homography')
-        cv2.imshow('Transformation of undistorted frame of JS fisheye camera using homography', cv2.resize(frame_homography_JS, (0,0), fx=2, fy=2))
-
-        cv2.waitKey(1)
-
-        return frame_homography_JS
-
 class dataLoadType:
 
     singleImage_inst = []
     calibrate_inst = []
     flag_fisrt_didLoadVarDetection = 1
     flag_first_didLoadVarCalibration = 1
+    flag_first_didHomography = 1
 
     def __init__(self, singleImage_inst, calibrate_inst):
         self.singleImage_inst = singleImage_inst
@@ -457,7 +402,7 @@ class dataLoadType:
     def subscribeImage(self):
         print('start to subscribe image')
         #rospy.init_node('dataLoadType', anonymous=True)
-        self.rospySubImg = rospy.Subscriber(ROS_TOPIC, Image, self.callback)
+        self.rospySubImg = rospy.Subscriber('cctv_camera/image_color', Image, self.callback)
         #automatically go to the callback function : self.callback()
 
     def stopSubscribing(self):
@@ -484,8 +429,8 @@ class dataLoadType:
 
     def publishImage(self):
         # http://wiki.ros.org/ROS/Tutorials/WritingPublisherSubscriber%28python%29
-        print('start to publish JS image')
-        self.rospyPubImg = rospy.Publisher('calibration_JS_fisheye/image_calibrated', Image, queue_size=10)
+        print('start to publish cctv image')
+        self.rospyPubImg = rospy.Publisher('cctv_camera/image_republished', Image, queue_size=10)
         #rospy.init_node('calibrated_JS_lens_fisheye', anonymous=True)
         rate = rospy.Rate(10)  # 10Hz
 
@@ -499,59 +444,84 @@ class dataLoadType:
             self.singleImage_inst.saveImage(self.bridge.imgmsg_to_cv2(data, "bgr8"))
             count = count + 1
 
+            # cv2.imshow('subscriber check', self.singleImage_inst.imgData)
+            # cv2.waitKey(1)
+
             # if you want to work asynchronously, edit the lines below
-            self.wrapper()
+            global flag_publish_calibrated_image
+            if flag_publish_calibrated_image == 1:
+                self.wrapper()
+            else:
+                self.wrapper_homography(self.singleImage_inst.imgData)
 
         except CvBridgeError as e:
             print(e)
 
+    def wrapper_homography(self, frame_cctv):
+        frame_cctv = cv2.resize(cv2.rotate(frame_cctv, rotateCode=cv2.ROTATE_90_CLOCKWISE), (0, 0), fx=0.5, fy=0.5)
+        if self.flag_first_didHomography == 1:
+
+            # srcPoints_cctv = np.array([[121, 422], [197, 408], [265, 394], [322, 379],
+            #                            [55, 479],  [151, 456], [239, 445], [312, 418], [374, 499],
+            #                            [84, 535],  [198, 506], [298, 476],
+            #                            [130, 618], [270, 567], [374, 523],
+            #                                        [371, 657]])
+            #
+            # dstPoints_cctv = np.array([            [250, 250], [250, 200], [250, 150], [250, 100],
+            #                            [200, 300], [200, 250], [200, 200], [200, 150], [200, 200],
+            #                            [150, 300], [150, 250], [150, 200],
+            #                            [100, 300], [100, 250], [100, 200],
+            #                                        [50, 250]])
+
+            srcPoints_cctv = np.array([[102, 234],   [182, 221],   [262, 218],
+                                       [92, 266],  [185, 258],  [280, 249],
+                                       [78, 313],  [188, 303], [300, 295],
+                                       [60, 382],  [197, 374], [241,371],[285,366], [334, 360],
+                                       [36, 492],   [210, 481], [377, 461], [515, 432],
+                                       [16, 648],   [231, 643], [440, 600]])
+
+            dstPoints_cctv = np.array([[250, 0],   [200, 0],   [150, 0],
+                                       [250, 50],  [200, 50],  [150, 50],
+                                       [250, 100], [200, 100], [150, 100],
+                                       [250, 150], [200, 150], [184,150],[166,150],[150, 150],
+                                       [250, 200], [200, 200], [150, 200], [100, 200],
+                                       [250, 250], [200, 250], [150, 250]])
+
+            srcPoints_cctv, dstPoints_cctv = np.array(srcPoints_cctv), np.array(dstPoints_cctv)
+            self.homography_cctv, mask = cv2.findHomography(srcPoints=srcPoints_cctv, dstPoints=dstPoints_cctv, method=cv2.RANSAC)
+
+            self.flag_first_didHomography = 0
+
+        frame_homography_cctv = cv2.warpPerspective(frame_cctv, self.homography_cctv, (250, 250))
+        # cv2.waitKey(1)
+
+        global flag_show_image
+        if flag_show_image == 1:
+            # cv2.namedWindow('oroginal cctv frmae')
+            # cv2.imshow('oroginal cctv frmae', frame_cctv)
+            cv2.namedWindow('frame_homography_cctv results')
+            cv2.imshow('frame_homography_cctv results', cv2.resize(frame_homography_cctv, (0, 0), fx=2, fy=2))
+            #cv2.imshow('frame_homography_cctv results', cv2.flip(frame_homography_cctv, flipCode=-1))
+            # cv2.imshow('frame_homography_cctv results', frame_homography_cctv)
+            cv2.waitKey(1)
+
+        try:
+            self.rospyPubImg.publish(self.bridge.cv2_to_imgmsg(frame_homography_cctv, "bgr8"))
+        except CvBridgeError as e:
+            print(e)
+
     def wrapper(self):
-        global count, num_of_image_in_database
-        global flag_subscribe_new_image_not_load_old_image, flag_load_calibrated_result
 
-        # fucking code
-        self.calibrate_inst.height = self.singleImage_inst.height
-        self.calibrate_inst.width = self.singleImage_inst.width
+        try:
+            img_cctv = cv2.resize(cv2.rotate(self.singleImage_inst.imgData, rotateCode=cv2.ROTATE_90_CLOCKWISE), (0,0), fx=0.5, fy=0.5)
+            self.rospyPubImg.publish(self.bridge.cv2_to_imgmsg(img_cctv, "bgr8"))
 
-        if flag_load_detected_result == 0 and flag_load_calibrated_result == 0:
-            if count < num_of_image_in_database:
-                self.calibrate_inst.detectCheckerBoard(self.singleImage_inst.imgData)
-            elif count == num_of_image_in_database:
-                self.calibrate_inst.detectCheckerBoard(self.singleImage_inst.imgData)
-                self.calibrate_inst.saveVarInDetection()
-                self.calibrate_inst.startCalibration()
-                self.calibrate_inst.saveVarAfterCalibration()
-            else:
-                self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
-
-        elif flag_load_detected_result == 1 and flag_load_calibrated_result == 0:
-            # load Detection results, start calibratin and show undistorted image
-            if self.flag_fisrt_didLoadVarDetection == 1:
-                self.calibrate_inst.loadVarInDetection()
-                self.calibrate_inst.startCalibration()
-                self.calibrate_inst.saveVarAfterCalibration()
-                # do not come here again
-                self.flag_fisrt_didLoadVarDetection = 0
-
-            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
-
-        elif flag_load_calibrated_result == 1:
-            # load Calibration results and show undistorted image
-            if self.flag_first_didLoadVarCalibration == 1:
-                self.calibrate_inst.loadVarAfterCalibration()
-                # do not come here again
-                self.flag_first_didLoadVarCalibration = 0
-
-            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
-
-        else:
-            print("fucking error for count = ", count)
-
-        if flag_publish_calibrated_image == 1:
-            try:
-                self.rospyPubImg.publish(self.bridge.cv2_to_imgmsg(self.singleImage_inst.imgCalibrated, "bgr8"))
-            except CvBridgeError as e:
-                print(e)
+            global flag_show_image
+            if flag_show_image == 1:
+                cv2.imshow('cctv display', img_cctv)
+                cv2.waitKey(1)
+        except CvBridgeError as e:
+            print(e)
 
 class singleImageData:
     height = 0
@@ -566,6 +536,7 @@ class singleImageData:
     def resize(self, ratio):
         #cv2.resize(self.imgData, )
         print('resize of the image completed')
+
 if __name__ == "__main__":
 
     print("check the version opencv.")
@@ -582,21 +553,12 @@ if __name__ == "__main__":
     try:
        if flag_subscribe_new_image_not_load_old_image == 1:
             # One python file for one init_node
-            rospy.init_node('calibration_JS_fisheye', anonymous=True)
+            rospy.init_node('cctv_publisher', anonymous=True)
 
             dataLoadType_inst.subscribeImage()
-
-            if flag_publish_calibrated_image == 1:
-                dataLoadType_inst.publishImage()
+            dataLoadType_inst.publishImage()
 
             rospy.spin()
-
-
-       elif flag_subscribe_new_image_not_load_old_image == 0:
-           dataLoadType_inst.loadImageInFiles()
-
-           if flag_publish_calibrated_image == 1:
-                dataLoadType_inst.publishImage()
 
     except KeyboardInterrupt:
         print("Shutting down")
