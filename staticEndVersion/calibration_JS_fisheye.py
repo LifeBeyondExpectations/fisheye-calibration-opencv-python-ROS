@@ -25,21 +25,18 @@ flag_publish_calibrated_image = 1
 
 flag_load_calibrated_result = 1
 flag_load_detected_result = 0
-flag_fisheye_calibrate = 1
 flag_save_image_onlyWhichDetectCheckeboard = 0
-flag_show_image_2_homography_3_distorted = 1
+flag_1_show_image_2_homography_3_distorted = 1
+
+flag_print = 0
 
 
 #parameter
 ROS_TOPIC = 'jaesung_lens_camera/image_color'
-    #'jaesung_lens_camera/image_color'
 path_image_database = "video_francois_lens/*.png"
 save_video_to_the_path = "video_francois_lens/"
 nameOf_pickle_Checkerboard_Detection = 'result/detection_result_francois_171021_1620_delete_image'
-#"result/addedImages_kiback_advice_included.pickle"
 nameof_pickel_calibrated_result = "calib_result_JS_fisheye.pickle"
-#fisheye-calibration-opencv-python-ROS/staticEndVersion/
-
 fileList = []
 num_of_image_in_database = 1000
 count = 0
@@ -66,8 +63,6 @@ class calibration:
         # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
         self.objp = np.zeros((1, self.CHECKERBOARD[0] * self.CHECKERBOARD[1], 3), np.float32)
         self.objp[0, :, :2] = np.mgrid[0:self.CHECKERBOARD[0], 0:self.CHECKERBOARD[1]].T.reshape(-1, 2)
-        # print('self.objp is')
-        # print(self.objp)
 
     def detectCheckerBoard(self, frame):
         # Our operations on the frame come here
@@ -100,8 +95,8 @@ class calibration:
             frame = cv2.drawChessboardCorners(image=frame, patternSize=self.CHECKERBOARD, corners=corners2, patternWasFound=ret)
 
         # Display the resulting frame
-        cv2.namedWindow('frame')
-        cv2.imshow('frame', frame)
+        cv2.namedWindow('checkerboard detected frame')
+        cv2.imshow('checkerboard detected frame', frame)
         cv2.waitKey(1)
 
     def saveVarInDetection(self):
@@ -112,95 +107,38 @@ class calibration:
         with open(nameOf_pickle_Checkerboard_Detection) as f:
             self.objpoints, self.imgpoints, self.width, self.height = pickle.load(f)
 
-            # check the result
-            tmp = np.array(self.objpoints)
-            print("shape of objpoints is ", tmp.shape)
+            global flag_print
+            if flag_print == 1:
+                # check the result
+                tmp = np.array(self.objpoints)
+                print("shape of objpoints is ", tmp.shape)
+    
+                tmp = np.array(self.imgpoints)
+                print("shape of imgpoints is ", tmp.shape)
+    
+                print("width is ", self.width, "height is ", self.height)
 
-            tmp = np.array(self.imgpoints)
-            print("shape of imgpoints is ", tmp.shape)
+    def startCalibration(self):        
+        
+        self.camera_matrix = np.zeros((3, 3))
+        self.distCoeffs = np.zeros((4, 1))
 
-            print("width is ", self.width, "height is ", self.height)
+        N_OK = len(self.objpoints)
+        self.rvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(N_OK)]
+        self.tvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(N_OK)]
+        self.ret, _, _, _, _ = cv2.fisheye.calibrate(
+            objectPoints=self.objpoints,
+            imagePoints=self.imgpoints,
+            image_size=(self.width, self.height),
+            K=self.camera_matrix,
+            D=self.distCoeffs,
+            rvecs=None,#self.rvecs,
+            tvecs=None,#self.tvecs,
+            flags=(cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv2.fisheye.CALIB_FIX_SKEW), # +cv2.fisheye.CALIB_FIX_PRINCIPAL_POINT cv2.fisheye.CALIB_CHECK_COND
+            criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 1e-6))
 
-    def startCalibration(self):
-        global mybalance
-
-        if flag_fisheye_calibrate == 0:
-            self.ret, self.camera_matrix, self.distCoeffs, self.rvecs, self.tvecs = cv2.calibrateCamera(
-                self.objpoints, self.imgpoints, (self.width, self.height), None, None)
-
-            # check the result of calibration
-            print("self.camera_matrix=np.array(" + str(self.camera_matrix.tolist()) + ")")
-            print("self.distCoeffs=np.array(" + str(self.distCoeffs.tolist()) + ")")
-
-            # https://docs.opencv.org/3.0-beta/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html#getoptimalnewcameramatrix
-            self.new_camera_matrix, self.roi = cv2.getOptimalNewCameraMatrix(self.camera_matrix,
-                                                                             self.distCoeffs,
-                                                                             (self.width, self.height), mybalance,
-                                                                             (self.width, self.height))
-            print("self.roi is ", self.roi)
-
-            ## self.roi or (self.width, self.height) ??
-            self.map1, self.map2 = cv2.initUndistortRectifyMap(self.camera_matrix, self.distCoeffs, np.eye(3),
-                                                               self.new_camera_matrix,
-                                                               (self.width, self.height),
-                                                               cv2.CV_16SC2)
-
-        else:
-            # self.ret, self.camera_matrix, self.distCoeffs, self.rvecs, self.tvecs = cv2.fisheye.calibrate(self.objpoints, self.imgpoints, (self.width, self.height), None, None)
-            # you should write all the cv2.fisheye.CALIB_..3 things .. then it works
-
-
-
-            # # The result is same with originally works
-            # self.ret, self.camera_matrix, self.distCoeffs, self.rvecs, self.tvecs = cv2.fisheye.calibrate(
-            #     self.objpoints, self.imgpoints, (self.width, self.height), None, None, None, None,
-            #     cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv2.fisheye.CALIB_FIX_SKEW,
-            #     (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6))
-
-            # self.ret, self.camera_matrix, self.distCoeffs, self.rvecs, self.tvecs = cv2.fisheye.calibrate(
-            #     self.objpoints, self.imgpoints, (self.width, self.height), None, None, None, None,
-            #     cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC,
-            #     (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6))
-
-            # No good results at all
-            # self.ret, self.camera_matrix, self.distCoeffs, self.rvecs, self.tvecs = cv2.fisheye.calibrate(
-            #     self.objpoints, self.imgpoints, (self.width, self.height), None, None, None, None,
-            #     cv2.fisheye.CALIB_CHECK_COND,
-            #     (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6))
-
-            # No good results at all
-            # self.ret, self.camera_matrix, self.distCoeffs, self.rvecs, self.tvecs = cv2.fisheye.calibrate(
-            #     self.objpoints, self.imgpoints, (self.width, self.height), None, None, None, None,
-            #     cv2.fisheye.CALIB_FIX_INTRINSIC,
-            #     (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6))
-
-            # Does not work at all
-            # self.ret, self.camera_matrix, self.distCoeffs, self.rvecs, self.tvecs = cv2.fisheye.calibrate(
-            #     self.objpoints, self.imgpoints, (self.width, self.height), None, None)
-
-            # originally works
-            # self.ret, self.camera_matrix, self.distCoeffs, self.rvecs, self.tvecs = cv2.fisheye.calibrate(
-            #     self.objpoints, self.imgpoints, (self.width, self.height), None, None, None, None,
-            #     cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv2.fisheye.CALIB_CHECK_COND + cv2.fisheye.CALIB_FIX_SKEW,
-            #     (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6))
-
-            # originally works
-            N_OK = len(self.objpoints)
-            self.camera_matrix = np.zeros((3, 3))
-            self.distCoeffs = np.zeros((4, 1))
-            self.rvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(N_OK)]
-            self.tvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(N_OK)]
-            self.ret, _, _, _, _ = cv2.fisheye.calibrate(
-                objectPoints=self.objpoints,
-                imagePoints=self.imgpoints,
-                image_size=(self.width, self.height),
-                K=self.camera_matrix,
-                D=self.distCoeffs,
-                rvecs=None,#self.rvecs,
-                tvecs=None,#self.tvecs,
-                flags=(cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC),#+ cv2.fisheye.CALIB_FIX_SKEW), # +cv2.fisheye.CALIB_FIX_PRINCIPAL_POINT cv2.fisheye.CALIB_CHECK_COND
-                criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 1e-6))
-
+        global flag_print
+        if flag_print == 1:
             # check the result of calibration
             print('camera matrix is ')
             print(self.camera_matrix)
@@ -212,186 +150,53 @@ class calibration:
             # print(self.tvecs)
             print('distort Coeffs is ')
             print(self.distCoeffs)
-            print('RMS re-projection error is ', self.ret)
-            print('balance is ', mybalance)
-            print('fuck')
-
-            # self.distCoeffs = np.zeros((4, 1))
-            self.roi = [0,0,0,0]
-
-            # check the result of calibration
-            print('camera matrix is ')
-            print(self.camera_matrix)
-            # print('new camera Matrix is ')
-            # print(self.new_camera_matrix)
-            print('distort Coeffs is ')
-            print(self.distCoeffs)
-            # print('self.roi is ', self.roi)
-            print('fuck2')
-
-            self.new_camera_matrix = self.camera_matrix
-            self.map1 = 0
-            self.map2 = 0
-            # self.new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(K=self.camera_matrix,
-            #                                                                                 D=self.distCoeffs,
-            #                                                                                 image_size=(self.width, self.height),
-            #                                                                                 R=np.eye(3),
-            #                                                                                 P=None,
-            #                                                                                 balance=mybalance,
-            #                                                                                 new_size=(self.width, self.height),
-            #                                                                                 fov_scale=1.0
-            #                                                                                 )
-            # # check the result of calibration
-            # print('camera matrix is ')
-            # print(self.camera_matrix)
-            # print('new camera Matrix is ')
-            # print(self.new_camera_matrix)
-            # print('distort Coeffs is ')
-            # print(self.distCoeffs)
-            #
-            # # https://medium.com/@kennethjiang/calibrate-fisheye-lens-using-opencv-part-2-13990f1b157f
-            # self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(K=self.camera_matrix,
-            #                                                            D=self.distCoeffs,
-            #                                                            R=np.eye(3),
-            #                                                            P=self.new_camera_matrix,
-            #                                                            size=(self.width, self.height),
-            #                                                            m1type=cv2.CV_32FC1)
-
-        tmp = np.array(self.map1)
-        print("self.map1 is ", tmp.shape)
-        tmp = np.array(self.map2)
-        print("self.map2 is ", tmp.shape)
-        # http://opencv-users.1802565.n2.nabble.com/Re-what-is-CV-32FC1-td6684091.html
-        # CV_<bit_depth>(S|U|F)C<number_of_channels>
-        # bit_depth is number of bits per element in matrix.supported bit. depth are 8, 16, 32, and 84.
-        # S = signed, U = unsigned, F = float
-        # number_of_channels is of course number of channels, in term of matrix you can think of this as third dimension
+            print('RMS re-projection error is ', self.ret)            
 
         print("calibration complete")
 
     def saveVarAfterCalibration(self):
-
-        if flag_fisheye_calibrate == 0:
-            with open(nameof_pickel_calibrated_result, 'w') as f:
-                pickle.dump([self.camera_matrix, self.distCoeffs, self.new_camera_matrix, self.width, self.height, self.roi, self.map1, self.map2], f)
-            print('self.roi is', self.roi)
-        else:
-            with open(nameof_pickel_calibrated_result, 'w') as f:
-                pickle.dump([self.camera_matrix, self.distCoeffs, self.new_camera_matrix, self.width, self.height, self.roi, self.map1, self.map2], f)
-
+        with open(nameof_pickel_calibrated_result, 'w') as f:
+            pickle.dump([self.camera_matrix, self.distCoeffs, self.new_camera_matrix, self.width, self.height], f)
+            # self.camera_matrix, self.distCoeffs, self.new_camera_matrix, self.width, self.height, self.roi, self.map1, self.map2
+            
     def loadVarAfterCalibration(self):
-
         with open(nameof_pickel_calibrated_result) as f:
             self.camera_matrix, self.distCoeffs, self.new_camera_matrix, self.width, self.height, self.roi, self.map1, self.map2 = pickle.load(f)
-            #for old data, erase self.roi, self.map1, self.map2
-
-        print('camera matrix is ')
-        print(self.camera_matrix)
-        print('new camera Matrix is ')
-        print(self.new_camera_matrix)
-        print('distort Coeffs is ')
-        print(self.distCoeffs)
-        print('width, height is ', self.width, self.height)
+    
+        global flag_print
+        if flag_print == 1:
+            print('camera matrix is ')
+            print(self.camera_matrix)
+            print('new camera Matrix is ')
+            print(self.new_camera_matrix)
+            print('distort Coeffs is ')
+            print(self.distCoeffs)
+            print('width, height is ', self.width, self.height)
 
     def undistort_imShow(self, frame):
-        #print('shape of frames is ', frame.shape)
-        #frame = cv2.resize(frame, (964, 1288), cv2.INTER_LINEAR)
-        dim0 = frame.shape[:2][::-1]
-        dim1 = dim0
-        dim2 = dim1
-        dim3 = tuple((np.array(dim1)*1).astype(int))
-        displayDim = (640, 480) #tuple((np.array(frame.shape[:2][::-1]) / 2.5).astype(int))
-        #print('dim3 is ', dim3, 'dim2 is ', dim2, 'dim1 is ', dim1)
-        #print('shape of the tained images are ', (self.width, self.height))
+        dim0 = frame.shape[:2][::-1] #(width, height)
 
-        if flag_fisheye_calibrate == 0:
+        frame_undistorted = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=dim0)
 
-            # best
-            # cv2.undistort : https://docs.opencv.org/3.1.0/da/d54/group__imgproc__transform.html#ga69f2545a8b62a6b0fc2ee060dc30559d
-            # The function is simply a combination of initUndistortRectifyMap() (with unity R ) and remap() (with bilinear interpolation)
-            # I cannot tell the difference between the two line below
-            frame_with_new_camera_matrix = cv2.undistort(frame, self.new_camera_matrix, self.distCoeffs, None, None)
-            frame_with_origin_camera_matrix = cv2.undistort(frame, self.camera_matrix, self.distCoeffs, None, None)
+        global flag_1_show_image_2_homography_3_distorted
 
-            # cv2.namedWindow('undistorted frame')
-            #cv2.imshow('undistorted frame', frame_with_new_camera_matrix)
+        if flag_1_show_image_2_homography_3_distorted == 1:
+            cv2.namedWindow('JS calibrated resuls')
+            cv2.imshow('JS calibrated resuls', frame_undistorted)
 
+        elif flag_1_show_image_2_homography_3_distorted == 2:
+            #show top view image based on homography
+            tmp = self.wrapper_homography(frame_undistorted)
 
+        elif flag_1_show_image_2_homography_3_distorted == 3:
+            cv2.namedWindow('JS distorted(original) frames')
+            cv2.imshow('JS distorted(original) frames', frame)
 
-            # shit
-            frame_with_remap = cv2.remap(frame, self.map1, self.map2, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-            #cv2.imshow('undistorted frame', frame_with_remap)
-
-            # compare with distorted / undistorted
-            # cv2.imshow('undistorted frame', np.concatenate((frame_with_new_camera_matrix, frame), axis=1))
-            # compare with camera_matrixes
-            # cv2.imshow('undistorted frame', np.concatenate((frame_with_new_camera_matrix, frame_with_origin_camera_matrix), axis=1))
-            # test
-            cv2.imshow('undistorted frame', np.concatenate((cv2.resize(frame_with_new_camera_matrix, (self.width, self.height), cv2.INTER_CUBIC),
-                                                            cv2.resize(frame_with_origin_camera_matrix, (self.width, self.height), cv2.INTER_CUBIC),
-                                                            cv2.resize(frame_with_remap, (self.width, self.height), cv2.INTER_CUBIC)
-                                                            ),
-                                                           axis=1))
-            cv2.waitKey(1)
-
-        elif flag_fisheye_calibrate == 1:
-
-            if self.flag_get_undistort_param == 1:
-
-                # self.new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(K=self.camera_matrix,
-                #                                                                                 D=self.distCoeffs,
-                #                                                                                 image_size=(self.width, self.height),
-                #                                                                                 R=np.eye(3),
-                #                                                                                 P=None,
-                #                                                                                 balance=mybalance,
-                #                                                                                 new_size=dim3#,fov_scale=1.0
-                #                                                                                 )
-                #
-                # # https://medium.com/@kennethjiang/calibrate-fisheye-lens-using-opencv-part-2-13990f1b157f
-                # self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(K=self.camera_matrix,
-                #                                                              D=self.distCoeffs,
-                #                                                              R=np.eye(3),
-                #                                                              P=self.camera_matrix,
-                #                                                              size=dim3,
-                #                                                              m1type=cv2.CV_32FC1)
-                #
-                #
-                # # check the result of calibration
-                # print('camera matrix is ')
-                # print(self.camera_matrix)
-                # print('new camera Matrix is ')
-                # print(self.new_camera_matrix)
-                # print('distort Coeffs is ')
-                # print(self.distCoeffs)
-                #
-                self.flag_get_undistort_param = 0
-
-
-            frame_undistorted_fisheye_camera_matrix = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=dim0)#(self.width, self.height))
-            # frame_undistorted_fisheye_remap_with_origin_camera_matrix = cv2.remap(src=frame,map1=self.map1,map2=self.map2,interpolation=cv2.INTER_LINEAR,borderMode=cv2.BORDER_DEFAULT)
-
-            tmp = cv2.resize(cv2.rotate(frame_undistorted_fisheye_camera_matrix, cv2.ROTATE_90_CLOCKWISE), displayDim, cv2.INTER_LINEAR)
-            global flag_show_image_2_homography_3_distorted
-            if flag_show_image_2_homography_3_distorted == 1:
-                # cv2.imshow('jaesungLensFrame', np.concatenate((cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR),
-                #                                          cv2.resize(frame_undistorted_fisheye_remap_with_origin_camera_matrix, displayDim, cv2.INTER_LINEAR),
-                #                                          cv2.resize(frame, displayDim, cv2.INTER_LINEAR)),axis=1))
-                #tmp = cv2.resize(frame_undistorted_fisheye_camera_matrix, displayDim, cv2.INTER_LINEAR)
-
-                cv2.namedWindow('JS calibrated resuls')
-                cv2.imshow('JS calibrated resuls', tmp)
-            elif flag_show_image_2_homography_3_distorted == 2:
-                tmp = self.wrapper_homography(tmp)
-            elif flag_show_image_2_homography_3_distorted == 3:
-                tmp = cv2.flip(cv2.resize(frame, (0,0), fx=0.5, fy=0.5), flipCode=-1)
-                cv2.namedWindow('JS distorted frames')
-                cv2.imshow('JS distorted frames', cv2.flip(cv2.resize(frame, (0,0), fx=0.5, fy=0.5), flipCode=-1))
-
-            cv2.waitKey(1)
-            return tmp
         else:
-            print('error for <flag_fisheye_calibrate>')
-            return None
+            print('wrong flag_1_show_image_2_homography_3_distorted')
+
+        cv2.waitKey(1)
+        return frame_undistorted
 
     def wrapper_homography(self, frame_JS):
 
@@ -486,12 +291,10 @@ class dataLoadType:
         # http://wiki.ros.org/ROS/Tutorials/WritingPublisherSubscriber%28python%29
         print('start to publish JS image')
         self.rospyPubImg = rospy.Publisher('calibration_JS_fisheye/image_calibrated', Image, queue_size=10)
-        #rospy.init_node('calibrated_JS_lens_fisheye', anonymous=True)
-        rate = rospy.Rate(10)  # 10Hz
+        rospy.Rate(10)  # 10Hz
 
 
     def callback(self, data):
-        #print('come to callback function')
         global count
         try:
             # parse message into image
@@ -509,7 +312,6 @@ class dataLoadType:
         global count, num_of_image_in_database
         global flag_subscribe_new_image_not_load_old_image, flag_load_calibrated_result
 
-        # fucking code
         self.calibrate_inst.height = self.singleImage_inst.height
         self.calibrate_inst.width = self.singleImage_inst.width
 
@@ -563,9 +365,6 @@ class singleImageData:
         self.imgData = img
         self.height, self.width = self.imgData.shape[:2]
 
-    def resize(self, ratio):
-        #cv2.resize(self.imgData, )
-        print('resize of the image completed')
 if __name__ == "__main__":
 
     print("check the version opencv.")
@@ -583,14 +382,12 @@ if __name__ == "__main__":
        if flag_subscribe_new_image_not_load_old_image == 1:
             # One python file for one init_node
             rospy.init_node('calibration_JS_fisheye', anonymous=True)
-
             dataLoadType_inst.subscribeImage()
 
             if flag_publish_calibrated_image == 1:
                 dataLoadType_inst.publishImage()
 
             rospy.spin()
-
 
        elif flag_subscribe_new_image_not_load_old_image == 0:
            dataLoadType_inst.loadImageInFiles()
@@ -602,9 +399,3 @@ if __name__ == "__main__":
         print("Shutting down")
 
     cv2.destroyAllWindows()
-
-
-
-
-
-
