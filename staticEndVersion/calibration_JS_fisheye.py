@@ -19,23 +19,21 @@ import os
 
 
 #flag
-flag_subscribe_new_image_not_load_old_image = 1
-flag_publish_calibrated_image = 1
-
+flag_subscribe_new_image_not_load_old_image = 1 
+flag_publish_calibrated_image = 0
 
 flag_load_calibrated_result = 1
 flag_load_detected_result = 0
 flag_save_image_onlyWhichDetectCheckeboard = 0
-flag_1_show_image_2_homography_3_distorted = 1
+flag_1_show_image_2_homography_3_distorted_4_undistort_homo =1 
 
-flag_print = 0
-
+flag_print = 1
 
 #parameter
-ROS_TOPIC = 'jaesung_lens_camera/image_color'
-path_image_database = "video_francois_lens/*.png"
-save_video_to_the_path = "video_francois_lens/"
-nameOf_pickle_Checkerboard_Detection = 'result/detection_result_francois_171021_1620_delete_image'
+ROS_TOPIC = 'desktop/image_color'#'jaesung_lens_camera/image_color'
+path_image_database = "171116/*.png"
+save_video_to_the_path = "171116/"
+nameOf_pickle_Checkerboard_Detection = 'detect_result_jaesung_171021_1600_delete_files.pickle'
 nameof_pickel_calibrated_result = "calib_result_JS_fisheye.pickle"
 fileList = []
 num_of_image_in_database = 1000
@@ -104,8 +102,9 @@ class calibration:
             pickle.dump([self.objpoints, self.imgpoints, self.width, self.height], f)
 
     def loadVarInDetection(self):
+        print('frame : width :', self.width, 'height :', self.height)
         with open(nameOf_pickle_Checkerboard_Detection) as f:
-            self.objpoints, self.imgpoints, self.width, self.height = pickle.load(f)
+            self.objpoints, self.imgpoints, self.width_trainImg, self.height_trainImg = pickle.load(f)
 
             global flag_print
             if flag_print == 1:
@@ -116,7 +115,7 @@ class calibration:
                 tmp = np.array(self.imgpoints)
                 print("shape of imgpoints is ", tmp.shape)
     
-                print("width is ", self.width, "height is ", self.height)
+                print("width_trainImg is ", self.width_trainImg, "height_trainImg is ", self.height_trainImg)
 
     def startCalibration(self):        
         
@@ -129,21 +128,41 @@ class calibration:
         self.ret, _, _, _, _ = cv2.fisheye.calibrate(
             objectPoints=self.objpoints,
             imagePoints=self.imgpoints,
-            image_size=(self.width, self.height),
+            image_size=(self.width_trainImg, self.height_trainImg),
             K=self.camera_matrix,
             D=self.distCoeffs,
             rvecs=None,#self.rvecs,
             tvecs=None,#self.tvecs,
-            flags=(cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv2.fisheye.CALIB_FIX_SKEW), # +cv2.fisheye.CALIB_FIX_PRINCIPAL_POINT cv2.fisheye.CALIB_CHECK_COND
+            flags=(cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv2.fisheye.CALIB_FIX_SKEW), # +cv2.fisheye.CALIB_FIX_PRINCIPAL_POINT  + cv2.fisheye.CALIB_CHECK_COND
             criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 1e-6))
+
+        mybalance = 1
+        self.new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(K=self.camera_matrix,
+                                                                                        D=self.distCoeffs,
+                                                                                        image_size=(self.width_trainImg, self.height_trainImg),
+                                                                                        R=np.eye(3),
+                                                                                        P=None,
+                                                                                        balance=mybalance,
+                                                                                        new_size=(self.width, self.height),
+                                                                                        fov_scale=1.0
+                                                                                        )
+
+
+        # https://medium.com/@kennethjiang/calibrate-fisheye-lens-using-opencv-part-2-13990f1b157f
+        self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(K=self.camera_matrix,
+                                                                   D=self.distCoeffs,
+                                                                   R=np.eye(3),
+                                                                   P=self.new_camera_matrix,
+                                                                   size=(self.width, self.height),
+                                                                   m1type=cv2.CV_32FC1)
 
         global flag_print
         if flag_print == 1:
             # check the result of calibration
             print('camera matrix is ')
             print(self.camera_matrix)
-            # print('new camera Matrix is ')
-            # print(self.new_camera_matrix)
+            print('new camera Matrix is ')
+            print(self.new_camera_matrix)
             # print('self.rvecs is ')
             # print(self.rvecs)
             # print('self.tvecs is ')
@@ -161,8 +180,8 @@ class calibration:
             
     def loadVarAfterCalibration(self):
         with open(nameof_pickel_calibrated_result) as f:
-            self.camera_matrix, self.distCoeffs, self.new_camera_matrix, self.width, self.height, self.roi, self.map1, self.map2 = pickle.load(f)
-    
+            self.camera_matrix, self.distCoeffs, self.new_camera_matrix, self.width_trainImage, self.height_trainImage, self.roi, self.map1, self.map2 = pickle.load(f)
+
         global flag_print
         if flag_print == 1:
             print('camera matrix is ')
@@ -171,29 +190,37 @@ class calibration:
             print(self.new_camera_matrix)
             print('distort Coeffs is ')
             print(self.distCoeffs)
-            print('width, height is ', self.width, self.height)
+            print('width, height is ', self.width_trainImage, self.height_trainImage)
 
     def undistort_imShow(self, frame):
-        dim0 = frame.shape[:2][::-1] #(width, height)
+        # dim0 = frame.shape[:2][::-1] #(width, height)
+        dim0 = (self.width_trainImage, self.height_trainImage)
 
-        frame_undistorted = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=dim0)
+        # frame_undistorted = cv2.remap(frame, self.map1, self.map2, interpolation=cv2.INTER_LINEAR,
+        #             borderMode=cv2.BORDER_CONSTANT)
+        # frame_undistorted = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs, Knew=self.camera_matrix, new_size=dim0)
+        frame_undistorted = cv2.fisheye.undistortImage(frame, self.camera_matrix, self.distCoeffs,
+                                                       Knew=self.camera_matrix, new_size=frame.shape[:2][::-1])#dim0
 
-        global flag_1_show_image_2_homography_3_distorted
+        global flag_1_show_image_2_homography_3_distorted_4_undistort_homo
 
-        if flag_1_show_image_2_homography_3_distorted == 1:
+        if flag_1_show_image_2_homography_3_distorted_4_undistort_homo == 1:
             cv2.namedWindow('JS calibrated resuls')
-            cv2.imshow('JS calibrated resuls', frame_undistorted)
+            cv2.imshow('JS calibrated resuls', frame_undistorted)#cv2.resize(frame_undistorted, (0,0),fx=0.3, fy=0.3)
 
-        elif flag_1_show_image_2_homography_3_distorted == 2:
+        elif flag_1_show_image_2_homography_3_distorted_4_undistort_homo == 2:
             #show top view image based on homography
             tmp = self.wrapper_homography(frame_undistorted)
 
-        elif flag_1_show_image_2_homography_3_distorted == 3:
+        elif flag_1_show_image_2_homography_3_distorted_4_undistort_homo == 3:
             cv2.namedWindow('JS distorted(original) frames')
             cv2.imshow('JS distorted(original) frames', frame)
+            
+        elif flag_1_show_image_2_homography_3_distorted_4_undistort_homo == 4:
+            return frame_undistorted, self.wrapper_homography(frame_undistorted)
 
         else:
-            print('wrong flag_1_show_image_2_homography_3_distorted')
+            print('wrong flag_1_show_image_2_homography_3_distorted_4_undistort_homo')
 
         cv2.waitKey(1)
         return frame_undistorted
@@ -201,51 +228,38 @@ class calibration:
     def wrapper_homography(self, frame_JS):
 
         if self.flag_first_didHomography == 1:
-            # Jaesung
-            srcPoints_JS = np.array([[63, 133], [149, 122], [250, 113], [374, 105], [520, 98],
-                                                                        [372, 126],
-                                                                        [372, 153],
-                                                [133, 180], [239, 177], [371, 172], [527, 173],
 
-                                                #[125, 241], [239, 244], [367, 250], [531, 256],
-                                     [19, 313], [108, 319], [222, 331], [366, 343], [537, 352],
-                                                                        [365, 375],
-                                                                        [364, 405],
-                                     [9, 379], [101, 395], [218, 412], [362, 436], [537, 453],
-                                     [4, 445], [95, 467]])
+            srcPoints_JS = np.array([
+                [349, 589], [448,590], [547, 590], [650, 590], [755, 592], [863, 590],
+                [246, 614], [369, 615], [504, 613], [64, 614], [792, 616], [938, 617],
+                [27, 662],  [210, 664], [413, 667], [639, 670], [875, 672], [1100, 674],
+                            [90,864],   [613, 892], [1200, 900]
+            ])
 
+            dstPoints_JS = np.array([
+                [100, 100], [200, 100], [300, 100], [400, 100], [500, 100], [600, 100],
+                [100, 200], [200, 200], [300, 200], [400, 200], [500, 200], [600, 200],
+                [100, 300], [200, 300], [300, 300], [400, 300], [500, 300], [600, 300],
+                            [200, 400], [300, 400], [400, 400],
+            ])
 
+            dstPoints_JS = dstPoints_JS
 
-            dstPoints_JS = np.array([[0,0],    [0,  50],  [0,100],    [0, 150],    [0, 200],
-                                                                      [16, 150],
-                                                                      [34, 150],
-                                               [50, 50],  [50, 100],  [50, 150],  [50, 200],
-
-                                               #[100, 50], [100, 100], [100, 150], [100, 200],
-                                     [150, 0], [150, 50], [150, 100], [150, 150], [150, 200],
-                                                                      [166, 150],
-                                                                      [184, 150],
-                                     [200, 0], [200, 50], [200, 100], [200, 150], [200, 200],
-                                     [250, 0], [250, 50]])
-
-
-
+            self.dim0 = frame_JS.shape[:2][::-1]#(700, 700)
             srcPoints_JS, dstPoints_JS = np.array(srcPoints_JS), np.array(dstPoints_JS)
-            self.homography_JS, mask = cv2.findHomography(srcPoints=srcPoints_JS, dstPoints=dstPoints_JS, method=cv2.RANSAC)
 
+            self.homography_RANSAC, mask = cv2.findHomography(srcPoints=srcPoints_JS, dstPoints=dstPoints_JS,
+                                                              method=cv2.RANSAC)
+            print('homography is ', self.homography_RANSAC)
             self.flag_first_didHomography = 0
 
-        frame_homography_JS = cv2.warpPerspective(frame_JS, self.homography_JS, (250, 250))
+        frame_homography_RANSAC = cv2.warpPerspective(frame_JS, self.homography_RANSAC, self.dim0)
+        # cv2.namedWindow('Transformation of undistorted frame of JS fisheye camera using homography')
+        # cv2.imshow('Transformation of undistorted frame of JS fisheye camera using homography', frame_homography_RANSAC)
 
-        # cv2.namedWindow('Undistorted frame of JS fisheye camera')
-        # cv2.imshow('Undistorted frame of JS fisheye camera', frame_JS)#cv2.resize(frame_JS, (0,0), fx=2, fy=2))
+        # cv2.waitKey(1)
 
-        cv2.namedWindow('Transformation of undistorted frame of JS fisheye camera using homography')
-        cv2.imshow('Transformation of undistorted frame of JS fisheye camera using homography', cv2.resize(frame_homography_JS, (0,0), fx=2, fy=2))
-
-        cv2.waitKey(1)
-
-        return frame_homography_JS
+        return frame_homography_RANSAC #frame_homography_JS
 
 class dataLoadType:
 
@@ -282,10 +296,13 @@ class dataLoadType:
         global count
         for i in fileList:
             count = count + 1
-            print('The ', count, '-th image is under processing')
+            print('The ', count, '-th image is ', i)
             self.singleImage_inst.saveImage(cv2.imread(i))
 
-            self.wrapper()
+            self.wrapper(i)
+            # tmp = cv2.imread(i)
+            # print('save the roi : _' + save_video_to_the_path + 'roi/' + i[-9:])
+            # cv2.imwrite(str(save_video_to_the_path + 'roi/' + i[-9:]), cv2.resize(tmp[190:440, 260:510], (0,0), fx=2.5, fy=2.5, interpolation=cv2.INTER_CUBIC))
 
     def publishImage(self):
         # http://wiki.ros.org/ROS/Tutorials/WritingPublisherSubscriber%28python%29
@@ -293,22 +310,27 @@ class dataLoadType:
         self.rospyPubImg = rospy.Publisher('calibration_JS_fisheye/image_calibrated', Image, queue_size=10)
         rospy.Rate(10)  # 10Hz
 
-
     def callback(self, data):
         global count
         try:
+            count = count + 1
+
             # parse message into image
             # bgr8: CV_8UC3, color image with blue-green-red color order and 8bit
             self.singleImage_inst.saveImage(self.bridge.imgmsg_to_cv2(data, "bgr8"))
-            count = count + 1
 
             # if you want to work asynchronously, edit the lines below
             self.wrapper()
 
+            #tmp = self.bridge.imgmsg_to_cv2(data, "bgr8")
+            #cv2.imwrite((save_video_to_the_path + str((count + 10000)) + '.png'), tmp)
+            #cv2.imshow('hello', tmp)
+            #cv2.waitKey(1)
+
         except CvBridgeError as e:
             print(e)
 
-    def wrapper(self):
+    def wrapper(self, nameOfFile=None):
         global count, num_of_image_in_database
         global flag_subscribe_new_image_not_load_old_image, flag_load_calibrated_result
 
@@ -344,7 +366,20 @@ class dataLoadType:
                 # do not come here again
                 self.flag_first_didLoadVarCalibration = 0
 
-            self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
+            if flag_1_show_image_2_homography_3_distorted_4_undistort_homo != 4:
+                self.singleImage_inst.imgCalibrated = self.calibrate_inst.undistort_imShow(self.singleImage_inst.imgData)
+            else:
+                self.singleImage_inst.imgCalibrated, self.singleImage_inst.imgHomography = self.calibrate_inst.undistort_imShow(
+                    self.singleImage_inst.imgData)
+
+                print('save iamge with name : ', save_video_to_the_path + 'undistort/' + nameOfFile[7:])
+                cv2.imwrite(save_video_to_the_path + 'undistort/' + nameOfFile[7:], self.singleImage_inst.imgCalibrated)
+                cv2.imwrite(save_video_to_the_path + 'homography/' + nameOfFile[7:], self.singleImage_inst.imgHomography)
+
+                # cv2.imshow('result', np.concatenate((self.singleImage_inst.imgData,
+                #                                      self.singleImage_inst.imgCalibrated,
+                #                                      self.singleImage_inst.imgHomography), axis=1))
+                # cv2.waitKey(1)
 
         else:
             print("fucking error for count = ", count)
@@ -360,9 +395,10 @@ class singleImageData:
     width = 0
     imgData = None
     imgCalibrated = None
+    imgHomography = None
 
     def saveImage(self, img):
-        self.imgData = img
+        self.imgData = cv2.resize(img, dsize=(1288, 964))
         self.height, self.width = self.imgData.shape[:2]
 
 if __name__ == "__main__":
