@@ -6,6 +6,7 @@ import cv2
 
 from std_msgs.msg import String
 from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 from cv_bridge import CvBridge, CvBridgeError
 
 import rospy
@@ -28,11 +29,14 @@ flag_save_image_onlyWhichDetectCheckeboard = 0
 flag_1_show_image_2_homography_3_distorted_4_undistort_homo =1 
 
 flag_print = 1
+flag_is_compressed_image = 1
+flag_go_to_wrapper_or_save_subImage = 0
+
 
 #parameter
-ROS_TOPIC = 'desktop/image_color'#'jaesung_lens_camera/image_color'
+ROS_TOPIC = 'remote/image_color/compressed'#'jaesung_lens_camera/image_color'
 path_image_database = "171116/*.png"
-save_video_to_the_path = "171116/"
+save_video_to_the_path = "final_demo/"
 nameOf_pickle_Checkerboard_Detection = 'detect_result_jaesung_171021_1600_delete_files.pickle'
 nameof_pickel_calibrated_result = "calib_result_JS_fisheye.pickle"
 fileList = []
@@ -275,9 +279,18 @@ class dataLoadType:
 
     def subscribeImage(self):
         print('start to subscribe image')
-        #rospy.init_node('dataLoadType', anonymous=True)
-        self.rospySubImg = rospy.Subscriber(ROS_TOPIC, Image, self.callback)
-        #automatically go to the callback function : self.callback()
+
+        if flag_is_compressed_image == 0:
+            #rospy.init_node('dataLoadType', anonymous=True)
+            self.rospySubImg = rospy.Subscriber(ROS_TOPIC, Image, self.callback)
+            #automatically go to the callback function : self.callback()
+
+        elif flag_is_compressed_image == 1:
+            self.rospySubImg = rospy.Subscriber(ROS_TOPIC, CompressedImage, self.callback, queue_size=1)
+
+        else:
+            print('flag_is_compressed_image is wrong')
+
 
     def stopSubscribing(self):
         print('stop subscribing image')
@@ -315,17 +328,32 @@ class dataLoadType:
         try:
             count = count + 1
 
-            # parse message into image
-            # bgr8: CV_8UC3, color image with blue-green-red color order and 8bit
-            self.singleImage_inst.saveImage(self.bridge.imgmsg_to_cv2(data, "bgr8"))
+            if flag_is_compressed_image == 0:
+                # parse message into image
+                # bgr8: CV_8UC3, color image with blue-green-red color order and 8bit
+                self.singleImage_inst.saveImage(self.bridge.imgmsg_to_cv2(data, "bgr8"))
 
-            # if you want to work asynchronously, edit the lines below
-            self.wrapper()
+            elif flag_is_compressed_image == 1:
+                np_arr = np.fromstring(data.data, np.uint8)
+                self.singleImage_inst.saveImage(cv2.imdecode(np_arr, cv2.IMREAD_COLOR)) # cv2.CV_LOAD_IMAGE_COLOR is out of version
 
-            #tmp = self.bridge.imgmsg_to_cv2(data, "bgr8")
-            #cv2.imwrite((save_video_to_the_path + str((count + 10000)) + '.png'), tmp)
-            #cv2.imshow('hello', tmp)
-            #cv2.waitKey(1)
+            else:
+                print('wrong flag_1_compressed_image... ')
+
+
+            global flag_go_to_wrapper_or_save_subImage
+            if flag_go_to_wrapper_or_save_subImage == 0:
+                tmp = self.singleImage_inst.imgData
+                cv2.imwrite((save_video_to_the_path + str((count + 10000)) + '.png'), tmp)
+                # cv2.imshow('hello', tmp)
+                # cv2.waitKey(1)
+
+            elif flag_go_to_wrapper_or_save_subImage == 1:
+                # if you want to work asynchronously, edit the lines below
+                self.wrapper()
+
+            else:
+                print('wrong flag_go_to_wrapper_or_save_sub_Images')
 
         except CvBridgeError as e:
             print(e)
